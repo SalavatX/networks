@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Глобальные стили */
+body {
+  @apply bg-gray-50;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Анимированный градиентный фон - более мягкие цвета */
+.animated-gradient-bg {
+  background: linear-gradient(-45deg, 
+    rgba(99, 102, 241, 0.6), /* Indigo с прозрачностью */
+    rgba(139, 92, 246, 0.6), /* Purple с прозрачностью */
+    rgba(236, 72, 153, 0.5), /* Pink с прозрачностью */
+    rgba(59, 130, 246, 0.5)  /* Blue с прозрачностью */
+  );
+  background-size: 400% 400%;
+  animation: gradient 20s ease infinite; /* Более медленная анимация */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+}
+
+/* Контейнер для контента поверх градиента */
+.content-container {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  width: 100%;
+  background-color: rgba(255, 255, 255, 0.7); /* Полупрозрачный белый фон */
+  backdrop-filter: blur(5px); /* Размытие для лучшего контраста */
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Стили для карточек */
+.card {
+  @apply bg-white rounded-lg shadow-md overflow-hidden transition-all duration-300;
+}
+
+.card:hover {
+  @apply shadow-lg transform translate-y-[-2px];
+}
+
+/* Стили для кнопок */
+.btn-gradient {
+  @apply bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white font-medium py-2 px-4 rounded-md transition-all duration-200 shadow-md hover:shadow-lg;
+}
