@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
 import { PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline';

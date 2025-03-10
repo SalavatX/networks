@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { storage } from '../../firebase/config';
-import { PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PhotoIcon } from '@heroicons/react/24/outline';
 
 interface FileUploadProps {
   onFileUpload: (url: string) => void;

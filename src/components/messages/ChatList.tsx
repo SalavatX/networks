@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { UserIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { formatDistanceToNow } from 'date-fns';

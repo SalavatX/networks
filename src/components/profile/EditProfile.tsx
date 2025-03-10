@@ -1,12 +1,8 @@
 import { useState, useRef } from 'react';
 import { doc, updateDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { updateProfile } from 'firebase/auth';
 import { db, auth, storage } from '../../firebase/config';
 import { XMarkIcon, PhotoIcon } from '@heroicons/react/24/outline';
-import { useAuth } from '../../contexts/AuthContext';
-import { UserIcon } from '@heroicons/react/24/outline';
-import Image from '../common/Image';
 
 interface ProfileData {
   uid: string;
@@ -25,15 +21,14 @@ interface EditProfileProps {
 }
 
 const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
-  const { currentUser } = useAuth();
   const [displayName, setDisplayName] = useState(profileData.displayName || '');
   const [bio, setBio] = useState(profileData.bio || '');
-  const [photoURL, setPhotoURL] = useState(profileData.photoURL || '');
+  const [photoURL] = useState(profileData.photoURL || '');
   const [newPhoto, setNewPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(photoURL);
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,7 +47,6 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
     
     if (isSubmitting) return;
     setIsSubmitting(true);
-    setError('');
     
     try {
       let updatedPhotoURL = photoURL;

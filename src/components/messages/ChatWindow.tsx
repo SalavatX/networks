@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { User } from 'firebase/auth';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { 
   collection, 
   doc, 
@@ -10,7 +10,6 @@ import {
   orderBy, 
   onSnapshot, 
   serverTimestamp,
-  getDoc,
   setDoc,
   updateDoc,
   deleteDoc,
