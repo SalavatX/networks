@@ -15,7 +15,6 @@ const PostFeed = () => {
   const postsPerPage = 5;
 
   useEffect(() => {
-    // Получаем первую порцию постов
     const postsRef = collection(db, 'posts');
     const postsQuery = query(
       postsRef,

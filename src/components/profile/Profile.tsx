@@ -46,7 +46,6 @@ const Profile = () => {
       if (!userId) return;
 
       try {
-        // Получаем данные профиля
         const userDocRef = doc(db, 'users', userId);
         const userDoc = await getDoc(userDocRef);
         
@@ -54,13 +53,11 @@ const Profile = () => {
           const userData = userDoc.data() as ProfileData;
           setProfileData(userData);
           
-          // Проверяем, подписан ли текущий пользователь на этот профиль
           if (currentUser && userData.followers) {
             setIsFollowing(userData.followers.includes(currentUser.uid));
           }
         }
         
-        // Получаем посты пользователя
         const postsRef = collection(db, 'posts');
         const postsQuery = query(
           postsRef,
@@ -93,7 +90,6 @@ const Profile = () => {
   const handleSendMessage = () => {
     if (!currentUser || !profileData) return;
     
-    // Переходим на страницу сообщений с выбранным пользователем
     navigate('/messages', { 
       state: { 
         selectedUser: {
@@ -114,7 +110,6 @@ const Profile = () => {
       const currentUserDocRef = doc(db, 'users', currentUser.uid);
       
       if (isFollowing) {
-        // Отписываемся
         await updateDoc(userDocRef, {
           followers: arrayRemove(currentUser.uid)
         });
@@ -130,7 +125,6 @@ const Profile = () => {
           return { ...prev, followers: updatedFollowers };
         });
       } else {
-        // Подписываемся
         await updateDoc(userDocRef, {
           followers: arrayUnion(currentUser.uid)
         });
@@ -160,7 +154,6 @@ const Profile = () => {
       setLoadingUsers(true);
       const usersData: UserData[] = [];
       
-      // Получаем данные каждого пользователя
       for (const uid of userIds) {
         const userDocRef = doc(db, 'users', uid);
         const userDoc = await getDoc(userDocRef);
@@ -234,9 +227,7 @@ const Profile = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-10">
-      {/* Шапка профиля */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        {/* Фон профиля */}
         <div className="h-32 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
         
         <div className="px-4 py-5 sm:px-6 -mt-16">
@@ -324,7 +315,6 @@ const Profile = () => {
             </div>
           </div>
           
-          {/* Информация о пользователе */}
           <div className="mt-6">
             {profileData.bio ? (
               <p className="text-sm text-gray-700">{profileData.bio}</p>
@@ -335,7 +325,6 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* Модальное окно редактирования профиля */}
       {showEditProfile && (
         <EditProfile 
           profileData={profileData} 
@@ -344,7 +333,6 @@ const Profile = () => {
         />
       )}
 
-      {/* Модальное окно подписчиков */}
       {showFollowersModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
           <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -407,7 +395,6 @@ const Profile = () => {
         </div>
       )}
 
-      {/* Модальное окно подписок */}
       {showFollowingModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
           <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -470,7 +457,6 @@ const Profile = () => {
         </div>
       )}
 
-      {/* Посты пользователя */}
       <div className="mt-8">
         <h2 className="text-xl font-bold text-gray-900 mb-4">Публикации</h2>
         

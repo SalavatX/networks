@@ -1,22 +1,18 @@
 import AWS from 'aws-sdk';
 
-// Настройка S3 клиента для Яндекс.Облако с использованием переменных окружения
 const s3 = new AWS.S3({
   endpoint: 'https://storage.yandexcloud.net',
-  accessKeyId: import.meta.env.VITE_YANDEX_ACCESS_KEY_ID, // Из переменных окружения
-  secretAccessKey: import.meta.env.VITE_YANDEX_SECRET_ACCESS_KEY, // Из переменных окружения
+  accessKeyId: import.meta.env.VITE_YANDEX_ACCESS_KEY_ID, 
+  secretAccessKey: import.meta.env.VITE_YANDEX_SECRET_ACCESS_KEY, 
   region: 'ru-central1',
   s3ForcePathStyle: true,
-  // Настройки для CORS
   httpOptions: {
     xhrWithCredentials: false
   }
 });
 
-// Имя вашего бакета в Яндекс.Облако из переменных окружения
 const BUCKET_NAME = import.meta.env.VITE_YANDEX_BUCKET_NAME;
 
-// Интерфейс, имитирующий Firebase Storage API
 export const storage = {
   ref: (path: string) => ({
     put: async (file: File) => {
@@ -28,9 +24,7 @@ export const storage = {
         Key: fullPath,
         Body: file,
         ContentType: file.type,
-        // Разрешаем публичный доступ к файлу
         ACL: 'public-read'
-        // Удалены настройки CORS, так как они должны быть на стороне сервера
       };
 
       try {
@@ -61,7 +55,6 @@ export const storage = {
           Body: file,
           ContentType: file.type,
           ACL: 'public-read'
-          // Удалены настройки CORS, так как они должны быть на стороне сервера
         };
 
         try {
@@ -80,7 +73,6 @@ export const storage = {
         }
       }
     }),
-    // Добавляем метод path для совместимости
     get path() {
       return path;
     }

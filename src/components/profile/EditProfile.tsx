@@ -36,7 +36,6 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
       const file = e.target.files[0];
       setNewPhoto(file);
       
-      // Создаем URL для предпросмотра
       const previewUrl = URL.createObjectURL(file);
       setPhotoPreview(previewUrl);
     }
@@ -51,22 +50,16 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
     try {
       let updatedPhotoURL = photoURL;
       
-      // Если есть новое фото, загружаем его
       if (newPhoto) {
         try {
-          // Создаем путь для хранения фото профиля
           const storageRef = storage.ref(`users/${profileData.uid}`);
-          // Загружаем файл
           const uploadTask = await storageRef.put(newPhoto);
-          // Получаем URL загруженного файла
           updatedPhotoURL = await uploadTask.ref.getDownloadURL();
         } catch (error) {
           console.error('Ошибка при загрузке фото:', error);
-          // Если не удалось загрузить фото, продолжаем с текущим URL
         }
       }
       
-      // Обновляем данные в Firestore
       const userDocRef = doc(db, 'users', profileData.uid);
       const updatedData = {
         displayName,
@@ -76,24 +69,18 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
       
       await updateDoc(userDocRef, updatedData);
       
-      // Обновляем профиль в Firebase Auth
       if (auth.currentUser) {
         await updateProfile(auth.currentUser, {
           displayName,
           photoURL: updatedPhotoURL
         });
-        
-        // Обновление currentUser произойдет автоматически через onAuthStateChanged
-        // в AuthContext, поэтому нам не нужно вызывать setCurrentUser
       }
       
-      // Обновляем все посты пользователя с новым именем и фото
       try {
         const postsRef = collection(db, 'posts');
         const postsQuery = query(postsRef, where('authorId', '==', profileData.uid));
         const postsSnapshot = await getDocs(postsQuery);
         
-        // Обновляем каждый пост
         const batch = writeBatch(db);
         postsSnapshot.docs.forEach(postDoc => {
           batch.update(postDoc.ref, {
@@ -105,10 +92,8 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
         await batch.commit();
       } catch (error) {
         console.error('Ошибка при обновлении постов:', error);
-        // Продолжаем выполнение даже при ошибке обновления постов
       }
       
-      // Уведомляем родительский компонент об обновлении
       onUpdate(updatedData);
       onClose();
       
@@ -137,7 +122,6 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
         </div>
         
         <form onSubmit={handleSubmit} className="p-4">
-          {/* Фото профиля */}
           <div className="mb-4 flex flex-col items-center">
             <div className="relative">
               {photoPreview ? (
@@ -173,7 +157,6 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
             </p>
           </div>
           
-          {/* Имя пользователя */}
           <div className="mb-4">
             <label htmlFor="displayName" className="block text-sm font-medium text-gray-700">
               Имя
@@ -188,7 +171,6 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
             />
           </div>
           
-          {/* Биография */}
           <div className="mb-4">
             <label htmlFor="bio" className="block text-sm font-medium text-gray-700">
               О себе
@@ -202,7 +184,6 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
             />
           </div>
           
-          {/* Кнопки действий */}
           <div className="flex justify-end space-x-3 mt-6">
             <button
               type="button"

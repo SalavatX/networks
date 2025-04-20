@@ -40,21 +40,19 @@ const FileUpload = ({
     setProgress(0);
 
     try {
-      // Создаем уникальное имя файла
+      
       const timestamp = new Date().getTime();
       const fileName = `${timestamp}_${file.name}`;
       const storageRef = storage.ref(`${folder}/${fileName}`);
 
-      // Загружаем файл
+      
       const uploadTask = await storageRef.put(file);
       
-      // Получаем URL загруженного файла
       const downloadURL = await uploadTask.ref.getDownloadURL();
       
-      // Передаем URL родительскому компоненту
       onFileUpload(downloadURL);
       
-      // Сбрасываем input
+    
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }

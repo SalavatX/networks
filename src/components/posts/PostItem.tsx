@@ -38,14 +38,12 @@ const PostItem = ({ post }: PostItemProps) => {
     const postRef = doc(db, 'posts', post.id);
     
     if (isLiked) {
-      // Убираем лайк
       await updateDoc(postRef, {
         likes: arrayRemove(currentUser.uid)
       });
       setIsLiked(false);
       setLikesCount(prev => prev - 1);
     } else {
-      // Добавляем лайк
       await updateDoc(postRef, {
         likes: arrayUnion(currentUser.uid)
       });
@@ -81,12 +79,11 @@ const PostItem = ({ post }: PostItemProps) => {
   };
 
   if (isDeleted) {
-    return null; // Не отображаем удаленный пост
+    return null; 
   }
 
   return (
     <div className="bg-white rounded-lg shadow mb-6 overflow-hidden">
-      {/* Заголовок поста с информацией об авторе */}
       <div className="p-4 flex items-center space-x-3">
         <Link to={`/profile/${post.authorId}`}>
           {post.authorPhotoURL ? (
@@ -123,7 +120,6 @@ const PostItem = ({ post }: PostItemProps) => {
         )}
       </div>
 
-      {/* Содержимое поста */}
       <div className="px-4 pb-3">
         <p className="text-gray-800 whitespace-pre-line">{post.content}</p>
       </div>
@@ -147,7 +143,6 @@ const PostItem = ({ post }: PostItemProps) => {
         </div>
       )}
 
-      {/* Кнопки действий */}
       <div className="px-4 py-3 border-t border-gray-200 flex justify-between">
         <button 
           onClick={toggleLike}
@@ -173,7 +168,6 @@ const PostItem = ({ post }: PostItemProps) => {
         </button>
       </div>
 
-      {/* Секция комментариев */}
       {showComments && (
         <div className="border-t border-gray-200">
           <CommentSection postId={post.id} />

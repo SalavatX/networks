@@ -20,7 +20,6 @@ const CreatePost = () => {
       const newImages = [...images, ...filesArray].slice(0, 4);
       setImages(newImages);
       
-      // Создание URL для предпросмотра
       const newImagePreviewUrls = newImages.map(file => URL.createObjectURL(file));
       setImagePreviewUrls(newImagePreviewUrls);
     }
@@ -48,25 +47,19 @@ const CreatePost = () => {
     try {
       const imageUrls: string[] = [];
       
-      // Загрузка изображений, если они есть
       if (images.length > 0) {
         for (const image of images) {
           try {
-            // Создаем путь для хранения изображений поста
             const storageRef = storage.ref(`posts/${currentUser.uid}`);
-            // Загружаем файл
             const uploadTask = await storageRef.put(image);
-            // Получаем URL загруженного файла
             const downloadURL = await uploadTask.ref.getDownloadURL();
             imageUrls.push(downloadURL);
           } catch (error) {
             console.error('Ошибка при загрузке изображения:', error);
-            // Продолжаем с остальными изображениями
           }
         }
       }
       
-      // Создание документа поста
       await addDoc(collection(db, 'posts'), {
         content,
         imageUrls,
@@ -78,7 +71,6 @@ const CreatePost = () => {
         commentsCount: 0
       });
       
-      // Сброс формы
       setContent('');
       setImages([]);
       setImagePreviewUrls([]);
@@ -120,7 +112,6 @@ const CreatePost = () => {
               onChange={(e) => setContent(e.target.value)}
             />
             
-            {/* Предпросмотр изображений */}
             {imagePreviewUrls.length > 0 && (
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {imagePreviewUrls.map((url, index) => (

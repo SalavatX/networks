@@ -97,7 +97,6 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
         
         return unsubscribe;
       } 
-      // Если у нас нет ID чата, но есть пользователь, с которым мы хотим начать чат
       else if (otherUser) {
         setLoading(false);
         return () => {};
@@ -109,7 +108,6 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
     const unsubscribePromise = fetchOrCreateChat();
     
     return () => {
-      // Обрабатываем результат промиса
       unsubscribePromise.then(unsubscribe => {
         if (typeof unsubscribe === 'function') {
           unsubscribe();
@@ -120,7 +118,6 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
     };
   }, [chatId, currentUser, otherUser]);
 
-  // Прокручиваем к последнему сообщению при получении новых сообщений
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -131,13 +128,12 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
     try {
       let chatDocRef;
       
-      // Если у нас уже есть чат
+
       if (chatId) {
         chatDocRef = doc(db, 'chats', chatId);
       } 
-      // Если нам нужно создать новый чат
+
       else if (otherUser) {
-        // Проверяем, существует ли уже чат с этим пользователем
         const chatsRef = collection(db, 'chats');
         const chatsQuery = query(
           chatsRef,
@@ -153,7 +149,6 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
         if (existingChat) {
           chatDocRef = doc(db, 'chats', existingChat.id);
         } else {
-          // Создаем новый чат
           const newChatRef = doc(collection(db, 'chats'));
           await setDoc(newChatRef, {
             participants: [currentUser.uid, otherUser.uid],
@@ -171,7 +166,6 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
         return; // Нет получателя для сообщения
       }
       
-      // Добавляем сообщение
       await addDoc(collection(db, 'messages'), {
         chatId: chatDocRef.id,
         text: newMessage,
@@ -180,7 +174,6 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
         read: false
       });
       
-      // Обновляем информацию о последнем сообщении в чате
       await updateDoc(chatDocRef, {
         lastMessage: {
           text: newMessage,
@@ -189,7 +182,6 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
         }
       });
       
-      // Очищаем поле ввода
       setNewMessage('');
     } catch (error) {
       console.error('Ошибка при отправке сообщения:', error);
@@ -201,10 +193,9 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
     
     if (window.confirm('Вы уверены, что хотите удалить это сообщение?')) {
       try {
-        // Удаляем сообщение из Firestore
+
         await deleteDoc(doc(db, 'messages', messageId));
         
-        // Обновляем список сообщений локально
         setMessages(prevMessages => prevMessages.filter(msg => msg.id !== messageId));
       } catch (error) {
         console.error('Ошибка при удалении сообщения:', error);

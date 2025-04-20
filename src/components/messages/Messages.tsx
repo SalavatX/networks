@@ -35,7 +35,6 @@ const Messages = () => {
   const [showChatList, setShowChatList] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Определяем, является ли устройство мобильным
   useEffect(() => {
     const checkIsMobile = () => {
       setIsMobile(window.innerWidth < 768);
@@ -49,14 +48,12 @@ const Messages = () => {
     };
   }, []);
 
-  // Получаем выбранного пользователя из состояния навигации (если есть)
   useEffect(() => {
     if (location.state && location.state.selectedUser) {
       setSelectedUser(location.state.selectedUser);
       if (isMobile) {
         setShowChatList(false);
       }
-      // Очищаем состояние навигации, чтобы при обновлении страницы не выбирался тот же пользователь
       navigate(location.pathname, { replace: true });
     }
   }, [location.state, navigate, location.pathname, isMobile]);
@@ -64,7 +61,6 @@ const Messages = () => {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Получаем все чаты, в которых участвует текущий пользователь
     const chatsRef = collection(db, 'chats');
     const chatsQuery = query(
       chatsRef,
@@ -80,7 +76,6 @@ const Messages = () => {
       
       setChats(chatsData);
       
-      // Получаем информацию о пользователях для каждого чата
       const userIds = new Set<string>();
       chatsData.forEach(chat => {
         chat.participants.forEach(participantId => {
@@ -109,7 +104,6 @@ const Messages = () => {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Выбор чата и пользователя
   const handleSelectChat = (chatId: string) => {
     setSelectedChat(chatId);
     
@@ -124,15 +118,13 @@ const Messages = () => {
       }
     }
     
-    // На мобильных устройствах скрываем список чатов при выборе чата
     if (isMobile) {
       setShowChatList(false);
     }
   };
 
-  // Создание нового чата с пользователем
   const handleStartNewChat = (user: User) => {
-    // Проверяем, существует ли уже чат с этим пользователем
+
     const existingChat = chats.find(chat => 
       chat.participants.length === 2 && 
       chat.participants.includes(user.uid) && 
@@ -143,21 +135,17 @@ const Messages = () => {
       handleSelectChat(existingChat.id);
     } else {
       setSelectedUser(user);
-      setSelectedChat(null); // Нет существующего чата, будет создан новый
+      setSelectedChat(null); 
       
-      // На мобильных устройствах скрываем список чатов
       if (isMobile) {
         setShowChatList(false);
       }
     }
   };
 
-  // Переключение между списком чатов и окном чата на мобильных устройствах
   const toggleChatList = () => {
     setShowChatList(!showChatList);
   };
-
-  // Функция для возврата к списку чатов в мобильной версии
   const handleBackToList = () => {
     setShowChatList(true);
   };
@@ -186,7 +174,6 @@ const Messages = () => {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Сообщения</h1>
         
-        {/* Кнопка переключения для мобильных устройств */}
         {isMobile && (
           <button 
             onClick={toggleChatList}
@@ -199,7 +186,6 @@ const Messages = () => {
       
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="flex h-[calc(100vh-200px)] max-w-full overflow-hidden">
-          {/* Список чатов */}
           {(!isMobile || showChatList) && (
             <div className={`${isMobile ? 'w-full' : 'w-1/3'} border-r border-gray-200 overflow-hidden`}>
               <ChatList 
@@ -213,7 +199,6 @@ const Messages = () => {
             </div>
           )}
           
-          {/* Окно чата */}
           {(!isMobile || !showChatList) && (
             <div className={`${isMobile ? 'w-full' : 'w-2/3'} overflow-hidden`}>
               {selectedChat || selectedUser ? (

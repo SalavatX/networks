@@ -36,7 +36,6 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Подписка на комментарии для данного поста
     const commentsRef = collection(db, 'comments');
     const commentsQuery = query(
       commentsRef,
@@ -64,7 +63,6 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
     setLoading(true);
     
     try {
-      // Добавляем новый комментарий
       await addDoc(collection(db, 'comments'), {
         postId,
         text: newComment,
@@ -74,13 +72,11 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
         createdAt: serverTimestamp()
       });
       
-      // Увеличиваем счетчик комментариев в посте
       const postRef = doc(db, 'posts', postId);
       await updateDoc(postRef, {
         commentsCount: increment(1)
       });
       
-      // Очищаем поле ввода
       setNewComment('');
     } catch (error) {
       console.error('Ошибка при добавлении комментария:', error);
@@ -97,7 +93,6 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
     <div className="p-4">
       <h3 className="text-lg font-medium text-gray-900 mb-4">Комментарии</h3>
       
-      {/* Форма добавления комментария */}
       {currentUser && (
         <form onSubmit={handleSubmit} className="mb-6">
           <div className="flex space-x-3">
@@ -142,7 +137,6 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
         </form>
       )}
       
-      {/* Список комментариев */}
       <div className="space-y-4">
         {comments.length > 0 ? (
           comments.map((comment) => (

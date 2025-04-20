@@ -13,11 +13,9 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        {/* Градиентный фон для всего приложения */}
         <div className="animated-gradient-bg"></div>
         
         <div className="min-h-screen">
-          {/* Навбар отображается только для защищенных маршрутов */}
           <Routes>
             <Route path="/login" element={null} />
             <Route path="/register" element={null} />
@@ -26,11 +24,9 @@ function App() {
           
           <main className="content-container">
             <Routes>
-              {/* Публичные маршруты */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               
-              {/* Защищенные маршруты */}
               <Route element={<PrivateRoute />}>
                 <Route path="/" element={<PostFeed />} />
                 <Route path="/profile/:userId" element={<Profile />} />
@@ -38,7 +34,6 @@ function App() {
                 <Route path="/notifications" element={<Notifications />} />
               </Route>
               
-              {/* Перенаправление для неизвестных маршрутов */}
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </main>

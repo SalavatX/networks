@@ -24,16 +24,16 @@ const Register = () => {
     setLoading(true);
 
     try {
-      // Создаем пользователя
+      
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Обновляем профиль с именем пользователя
+     
       await updateProfile(user, {
         displayName: name
       });
 
-      // Создаем документ пользователя в Firestore
+      
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
         displayName: name,

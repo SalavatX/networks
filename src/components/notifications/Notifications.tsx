@@ -28,8 +28,6 @@ const Notifications = () => {
 
   useEffect(() => {
     if (!currentUser) return;
-
-    // Получаем уведомления для текущего пользователя
     const notificationsRef = collection(db, 'notifications');
     const notificationsQuery = query(
       notificationsRef,

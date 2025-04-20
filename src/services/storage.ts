@@ -1,7 +1,5 @@
 import AWS from 'aws-sdk';
 
-// Настройка S3 клиента для Яндекс.Облако
-// Замените эти значения на ваши собственные из Яндекс.Облако
 const s3 = new AWS.S3({
   endpoint: 'https://storage.yandexcloud.net',
   accessKeyId: 'YOUR_ACCESS_KEY_ID',
@@ -10,10 +8,8 @@ const s3 = new AWS.S3({
   s3ForcePathStyle: true
 });
 
-// Имя вашего бакета в Яндекс.Облако
 const BUCKET_NAME = 'your-bucket-name';
 
-// Интерфейс, имитирующий Firebase Storage API
 export const storage = {
   ref: (path: string) => ({
     put: async (file: File) => {
@@ -60,7 +56,6 @@ export const storage = {
       }
     })
   }),
-  // Другие методы, которые могут понадобиться
 };
 
 export default storage; 
