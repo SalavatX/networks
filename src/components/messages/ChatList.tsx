@@ -1,18 +1,21 @@
 import { useState } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../../firebase/config';
 import { UserIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import mysqlService from '../../services/mysqlService';
 
 interface Chat {
   id: string;
-  participants: string[];
+  otherUser: {
+    uid: string;
+    displayName: string | null;
+    photoURL: string | null;
+  };
   lastMessage: {
     text: string;
     senderId: string;
-    timestamp: { toDate: () => Date };
-  };
+    timestamp: string;
+  } | null;
   unreadCount: number;
 }
 
@@ -21,11 +24,11 @@ interface User {
   displayName: string | null;
   photoURL: string | null;
   email?: string | null;
+  isFollowing?: boolean;
 }
 
 interface ChatListProps {
   chats: Chat[];
-  users: User[];
   currentUserId: string;
   selectedChatId: string | null;
   onSelectChat: (chatId: string) => void;
@@ -34,7 +37,6 @@ interface ChatListProps {
 
 const ChatList = ({ 
   chats, 
-  users, 
   currentUserId, 
   selectedChatId, 
   onSelectChat, 
@@ -45,7 +47,7 @@ const ChatList = ({
   const [isSearching, setIsSearching] = useState(false);
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) {
+    if (!searchQuery.trim() || searchQuery.length < 2) {
       setSearchResults([]);
       return;
     }
@@ -53,18 +55,13 @@ const ChatList = ({
     setIsSearching(true);
 
     try {
-      const usersRef = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersRef);
+      // Используем MySQL API для поиска пользователей
+      const results = await mysqlService.searchUsers(searchQuery);
       
-      const results = usersSnapshot.docs
-        .map(doc => ({ uid: doc.id, ...doc.data() } as User))
-        .filter(user => 
-          user.uid !== currentUserId && 
-          (user.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-           user.email?.toLowerCase().includes(searchQuery.toLowerCase()))
-        );
+      // Фильтруем, чтобы не показывать текущего пользователя в результатах
+      const filteredResults = results.filter(user => user.uid !== currentUserId);
       
-      setSearchResults(results);
+      setSearchResults(filteredResults);
     } catch (error) {
       console.error('Ошибка при поиске пользователей:', error);
     } finally {
@@ -72,33 +69,9 @@ const ChatList = ({
     }
   };
 
-  const formatDate = (date: Date) => {
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
     return formatDistanceToNow(date, { addSuffix: true, locale: ru });
-  };
-
-  const getChatName = (chat: Chat) => {
-    const otherParticipantId = chat.participants.find(id => id !== currentUserId);
-    if (!otherParticipantId) return 'Чат';
-    
-    const otherUser = users.find(user => user.uid === otherParticipantId);
-    return otherUser?.displayName || 'Пользователь';
-  };
-
-  const getChatAvatar = (chat: Chat) => {
-    const otherParticipantId = chat.participants.find(id => id !== currentUserId);
-    if (!otherParticipantId) return null;
-    
-    const otherUser = users.find(user => user.uid === otherParticipantId);
-    return otherUser?.photoURL;
-  };
-
-  const getLastMessagePreview = (chat: Chat) => {
-    if (!chat.lastMessage) return 'Нет сообщений';
-    
-    const isOwnMessage = chat.lastMessage.senderId === currentUserId;
-    const prefix = isOwnMessage ? 'Вы: ' : '';
-    
-    return `${prefix}${chat.lastMessage.text}`;
   };
 
   return (
@@ -127,6 +100,12 @@ const ChatList = ({
       </div>
 
       {/* Результаты поиска */}
+      {searchQuery && !isSearching && searchResults.length === 0 && (
+        <div className="p-4 border-b border-gray-200">
+          <h3 className="text-sm font-medium text-gray-900 mb-2">Результаты поиска</h3>
+          <div className="text-gray-500 text-sm">Пользователь не найден</div>
+        </div>
+      )}
       {searchResults.length > 0 && (
         <div className="p-4 border-b border-gray-200">
           <h3 className="text-sm font-medium text-gray-900 mb-2">Результаты поиска</h3>
@@ -171,10 +150,10 @@ const ChatList = ({
                 className={`p-4 hover:bg-gray-50 cursor-pointer ${selectedChatId === chat.id ? 'bg-indigo-50' : ''}`}
               >
                 <div className="flex items-center space-x-3">
-                  {getChatAvatar(chat) ? (
+                  {chat.otherUser.photoURL ? (
                     <img 
-                      src={getChatAvatar(chat) || ''} 
-                      alt={getChatName(chat)} 
+                      src={chat.otherUser.photoURL} 
+                      alt={chat.otherUser.displayName || 'Пользователь'} 
                       className="h-12 w-12 rounded-full flex-shrink-0"
                     />
                   ) : (
@@ -185,16 +164,19 @@ const ChatList = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-medium text-gray-900 truncate">
-                        {getChatName(chat)}
+                        {chat.otherUser.displayName || 'Пользователь'}
                       </h3>
                       {chat.lastMessage && chat.lastMessage.timestamp && (
                         <p className="text-xs text-gray-500 flex-shrink-0">
-                          {formatDate(chat.lastMessage.timestamp.toDate())}
+                          {formatDate(chat.lastMessage.timestamp)}
                         </p>
                       )}
                     </div>
                     <p className="text-sm text-gray-500 truncate">
-                      {getLastMessagePreview(chat)}
+                      {chat.lastMessage ? 
+                        `${chat.lastMessage.senderId === currentUserId ? 'Вы: ' : ''}${chat.lastMessage.text}` : 
+                        'Нет сообщений'
+                      }
                     </p>
                   </div>
                 </div>

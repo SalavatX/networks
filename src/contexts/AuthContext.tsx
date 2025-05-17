@@ -1,26 +1,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { 
-  User, 
-  onAuthStateChanged, 
-  signOut as firebaseSignOut 
-} from 'firebase/auth';
-import { auth, db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
-
-interface UserData {
-  uid: string;
-  displayName: string | null;
-  email: string | null;
-  photoURL: string | null;
-  bio?: string;
-  followers?: string[];
-  following?: string[];
-}
+import mysqlService, { User } from '../services/mysqlService';
 
 interface AuthContextType {
   currentUser: User | null;
-  userData: UserData | null;
   loading: boolean;
+  signIn: (email: string, password: string) => Promise<User>;
+  signUp: (email: string, password: string, displayName: string) => Promise<User>;
   signOut: () => Promise<void>;
 }
 
@@ -40,42 +25,48 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      
-      if (user) {
-        try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          if (userDoc.exists()) {
-            setUserData(userDoc.data() as UserData);
-          }
-        } catch (error) {
-          console.error('Ошибка при получении данных пользователя:', error);
-        }
-      } else {
-        setUserData(null);
+    const checkAuth = async () => {
+      try {
+        // Проверяем токен и получаем данные текущего пользователя
+        const user = await mysqlService.getCurrentUser();
+        setCurrentUser(user);
+      } catch (error) {
+        // Если ошибка аутентификации, очищаем данные пользователя
+        setCurrentUser(null);
+        mysqlService.clearToken();
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
-    });
+    };
 
-    return unsubscribe;
+    checkAuth();
   }, []);
 
+  const signIn = async (email: string, password: string) => {
+    const user = await mysqlService.loginUser(email, password);
+    setCurrentUser(user);
+    return user;
+  };
+
+  const signUp = async (email: string, password: string, displayName: string) => {
+    const user = await mysqlService.registerUser(email, password, displayName);
+    setCurrentUser(user);
+    return user;
+  };
+
   const signOut = async () => {
-    await firebaseSignOut(auth);
+    mysqlService.clearToken();
+    setCurrentUser(null);
   };
 
   const value = {
     currentUser,
-    userData,
     loading,
+    signIn,
+    signUp,
     signOut
   };
 

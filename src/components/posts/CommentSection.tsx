@@ -1,59 +1,23 @@
-import { useState, useEffect } from 'react';
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  serverTimestamp,
-  doc,
-  updateDoc,
-  increment
-} from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
-
-interface Comment {
-  id: string;
-  text: string;
-  authorId: string;
-  authorName: string;
-  authorPhotoURL: string;
-  createdAt: { toDate: () => Date };
-}
+import mysqlService, { Comment } from '../../services/mysqlService';
 
 interface CommentSectionProps {
   postId: string;
+  comments: Comment[];
+  onCommentAdded?: () => void;
 }
 
-const CommentSection = ({ postId }: CommentSectionProps) => {
-  const { currentUser, userData } = useAuth();
-  const [comments, setComments] = useState<Comment[]>([]);
+const CommentSection: React.FC<CommentSectionProps> = ({ 
+  postId, 
+  comments = [], 
+  onCommentAdded 
+}) => {
+  const { currentUser } = useAuth();
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const commentsRef = collection(db, 'comments');
-    const commentsQuery = query(
-      commentsRef,
-      where('postId', '==', postId),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(commentsQuery, (snapshot) => {
-      const commentsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Comment[];
-      
-      setComments(commentsData);
-    });
-
-    return () => unsubscribe();
-  }, [postId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,21 +27,13 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
     setLoading(true);
     
     try {
-      await addDoc(collection(db, 'comments'), {
-        postId,
-        text: newComment,
-        authorId: currentUser.uid,
-        authorName: userData?.displayName || 'Пользователь',
-        authorPhotoURL: userData?.photoURL || '',
-        createdAt: serverTimestamp()
-      });
-      
-      const postRef = doc(db, 'posts', postId);
-      await updateDoc(postRef, {
-        commentsCount: increment(1)
-      });
-      
+      await mysqlService.addComment(postId, newComment);
       setNewComment('');
+      
+      // Обновляем список комментариев через родительский компонент
+      if (onCommentAdded) {
+        onCommentAdded();
+      }
     } catch (error) {
       console.error('Ошибка при добавлении комментария:', error);
     } finally {
@@ -85,8 +41,9 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
     }
   };
 
-  const formatDate = (date: Date) => {
-    return formatDistanceToNow(date, { addSuffix: true, locale: ru });
+  const formatDate = (date: Date | string) => {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return formatDistanceToNow(dateObj, { addSuffix: true, locale: ru });
   };
 
   return (
@@ -97,16 +54,16 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
         <form onSubmit={handleSubmit} className="mb-6">
           <div className="flex space-x-3">
             <div className="flex-shrink-0">
-              {userData?.photoURL ? (
+              {currentUser.photoURL ? (
                 <img 
-                  src={userData.photoURL} 
+                  src={currentUser.photoURL} 
                   alt="Profile" 
                   className="h-8 w-8 rounded-full"
                 />
               ) : (
                 <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
                   <span className="text-gray-500 font-bold">
-                    {userData?.displayName?.charAt(0) || 'U'}
+                    {currentUser.displayName?.charAt(0) || 'U'}
                   </span>
                 </div>
               )}
@@ -142,16 +99,16 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
           comments.map((comment) => (
             <div key={comment.id} className="flex space-x-3">
               <div className="flex-shrink-0">
-                {comment.authorPhotoURL ? (
+                {comment.author.photoURL ? (
                   <img 
-                    src={comment.authorPhotoURL} 
-                    alt={comment.authorName} 
+                    src={comment.author.photoURL} 
+                    alt={comment.author.displayName || 'Пользователь'} 
                     className="h-8 w-8 rounded-full"
                   />
                 ) : (
                   <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
                     <span className="text-gray-500 font-bold">
-                      {comment.authorName.charAt(0)}
+                      {comment.author.displayName?.charAt(0) || 'U'}
                     </span>
                   </div>
                 )}
@@ -159,11 +116,11 @@ const CommentSection = ({ postId }: CommentSectionProps) => {
               <div className="flex-1 bg-gray-50 rounded-lg px-4 py-2 sm:px-6 sm:py-4">
                 <div className="sm:flex sm:justify-between sm:items-baseline">
                   <h3 className="text-sm font-medium text-gray-900">
-                    {comment.authorName}
+                    {comment.author.displayName || 'Пользователь'}
                   </h3>
                   {comment.createdAt && (
                     <p className="mt-1 text-xs text-gray-500 sm:mt-0 sm:ml-6">
-                      {formatDate(comment.createdAt.toDate())}
+                      {formatDate(comment.createdAt)}
                     </p>
                   )}
                 </div>

@@ -1,21 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, query, where, orderBy, limit, getDocs, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { db } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
 import PostItem from '../posts/PostItem';
 import EditProfile from './EditProfile';
 import { UserIcon, PencilIcon, ChatBubbleLeftIcon, UserPlusIcon, UserMinusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import Image from '../common/Image';
+import mysqlService from '../../services/mysqlService';
 
 interface ProfileData {
   uid: string;
   displayName: string | null;
-  email: string | null;
+  email?: string | null;
   photoURL: string | null;
-  bio: string;
-  followers: string[];
-  following: string[];
+  bio?: string;
+  followersCount?: number;
+  followingCount?: number;
+  isFollowing?: boolean;
 }
 
 interface UserData {
@@ -46,32 +46,13 @@ const Profile = () => {
       if (!userId) return;
 
       try {
-        const userDocRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userDocRef);
+        // Получаем данные профиля через MySQL API
+        const userData = await mysqlService.getUserProfile(userId);
+        setProfileData(userData);
+        setIsFollowing(userData.isFollowing || false);
         
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as ProfileData;
-          setProfileData(userData);
-          
-          if (currentUser && userData.followers) {
-            setIsFollowing(userData.followers.includes(currentUser.uid));
-          }
-        }
-        
-        const postsRef = collection(db, 'posts');
-        const postsQuery = query(
-          postsRef,
-          where('authorId', '==', userId),
-          orderBy('createdAt', 'desc'),
-          limit(10)
-        );
-        
-        const postsSnapshot = await getDocs(postsQuery);
-        const postsData = postsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        
+        // Получаем посты пользователя
+        const postsData = await mysqlService.getUserPosts(userId);
         setPosts(postsData);
       } catch (error) {
         console.error('Ошибка при загрузке профиля:', error);
@@ -106,37 +87,30 @@ const Profile = () => {
     
     try {
       setIsUpdating(true);
-      const userDocRef = doc(db, 'users', profileData.uid);
-      const currentUserDocRef = doc(db, 'users', currentUser.uid);
       
       if (isFollowing) {
-        await updateDoc(userDocRef, {
-          followers: arrayRemove(currentUser.uid)
-        });
-        
-        await updateDoc(currentUserDocRef, {
-          following: arrayRemove(profileData.uid)
-        });
-        
+        // Отписываемся от пользователя
+        await mysqlService.unfollowUser(profileData.uid);
         setIsFollowing(false);
         setProfileData(prev => {
           if (!prev) return null;
-          const updatedFollowers = prev.followers.filter(id => id !== currentUser.uid);
-          return { ...prev, followers: updatedFollowers };
+          return { 
+            ...prev, 
+            followersCount: (prev.followersCount || 0) - 1,
+            isFollowing: false 
+          };
         });
       } else {
-        await updateDoc(userDocRef, {
-          followers: arrayUnion(currentUser.uid)
-        });
-        
-        await updateDoc(currentUserDocRef, {
-          following: arrayUnion(profileData.uid)
-        });
-        
+        // Подписываемся на пользователя
+        await mysqlService.followUser(profileData.uid);
         setIsFollowing(true);
         setProfileData(prev => {
           if (!prev) return null;
-          return { ...prev, followers: [...prev.followers, currentUser.uid] };
+          return { 
+            ...prev, 
+            followersCount: (prev.followersCount || 0) + 1,
+            isFollowing: true 
+          };
         });
       }
     } catch (error) {
@@ -147,50 +121,38 @@ const Profile = () => {
     }
   };
 
-  const fetchUsersList = async (userIds: string[]) => {
-    if (!userIds.length) return [];
+  // На данном этапе просто заглушки для списков подписчиков/подписок
+  // В будущем реализовать через MySQL API
+  const showFollowers = async () => {
+    if (!profileData || !profileData.followersCount) return;
     
     try {
       setLoadingUsers(true);
-      const usersData: UserData[] = [];
-      
-      for (const uid of userIds) {
-        const userDocRef = doc(db, 'users', uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          usersData.push({
-            uid,
-            displayName: userData.displayName,
-            photoURL: userData.photoURL
-          });
-        }
-      }
-      
-      return usersData;
+      setShowFollowersModal(true);
+      const followers = await mysqlService.getUserFollowers(profileData.uid);
+      setFollowersList(followers);
     } catch (error) {
-      console.error('Ошибка при загрузке списка пользователей:', error);
-      return [];
+      console.error('Ошибка при загрузке подписчиков:', error);
+      alert('Не удалось загрузить список подписчиков');
     } finally {
       setLoadingUsers(false);
     }
   };
 
-  const showFollowers = async () => {
-    if (!profileData || !profileData.followers.length) return;
-    
-    const users = await fetchUsersList(profileData.followers);
-    setFollowersList(users);
-    setShowFollowersModal(true);
-  };
-
   const showFollowing = async () => {
-    if (!profileData || !profileData.following.length) return;
+    if (!profileData || !profileData.followingCount) return;
     
-    const users = await fetchUsersList(profileData.following);
-    setFollowingList(users);
-    setShowFollowingModal(true);
+    try {
+      setLoadingUsers(true);
+      setShowFollowingModal(true);
+      const following = await mysqlService.getUserFollowing(profileData.uid);
+      setFollowingList(following);
+    } catch (error) {
+      console.error('Ошибка при загрузке подписок:', error);
+      alert('Не удалось загрузить список подписок');
+    } finally {
+      setLoadingUsers(false);
+    }
   };
 
   const closeModals = () => {
@@ -254,17 +216,17 @@ const Profile = () => {
                 <button 
                   onClick={showFollowers}
                   className="hover:text-indigo-600 transition-colors focus:outline-none"
-                  disabled={!profileData.followers?.length}
+                  disabled={!profileData.followersCount}
                 >
-                  <span className="font-semibold">{profileData.followers?.length || 0}</span> подписчиков
+                  <span className="font-semibold">{profileData.followersCount || 0}</span> подписчиков
                 </button>
                 <span>·</span>
                 <button 
                   onClick={showFollowing}
                   className="hover:text-indigo-600 transition-colors focus:outline-none"
-                  disabled={!profileData.following?.length}
+                  disabled={!profileData.followingCount}
                 >
-                  <span className="font-semibold">{profileData.following?.length || 0}</span> подписок
+                  <span className="font-semibold">{profileData.followingCount || 0}</span> подписок
                 </button>
               </div>
             </div>

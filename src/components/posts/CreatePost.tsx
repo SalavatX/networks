@@ -1,11 +1,14 @@
 import { useState, useRef } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, storage } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
 import { PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import mysqlService from '../../services/mysqlService';
 
-const CreatePost = () => {
-  const { currentUser, userData } = useAuth();
+interface CreatePostProps {
+  onPostCreated?: () => void;
+}
+
+const CreatePost: React.FC<CreatePostProps> = ({ onPostCreated }) => {
+  const { currentUser } = useAuth();
   const [content, setContent] = useState('');
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
@@ -45,35 +48,29 @@ const CreatePost = () => {
     setLoading(true);
     
     try {
-      const imageUrls: string[] = [];
+      let imageUrl: string | undefined;
       
       if (images.length > 0) {
-        for (const image of images) {
-          try {
-            const storageRef = storage.ref(`posts/${currentUser.uid}`);
-            const uploadTask = await storageRef.put(image);
-            const downloadURL = await uploadTask.ref.getDownloadURL();
-            imageUrls.push(downloadURL);
-          } catch (error) {
-            console.error('Ошибка при загрузке изображения:', error);
-          }
+        try {
+          // Загружаем только первое изображение (для простоты)
+          const uploadResult = await mysqlService.uploadFile(images[0], 'posts');
+          imageUrl = uploadResult.fileUrl;
+        } catch (error) {
+          console.error('Ошибка при загрузке изображения:', error);
         }
       }
       
-      await addDoc(collection(db, 'posts'), {
-        content,
-        imageUrls,
-        authorId: currentUser.uid,
-        authorName: userData?.displayName || 'Пользователь',
-        authorPhotoURL: userData?.photoURL || '',
-        createdAt: serverTimestamp(),
-        likes: [],
-        commentsCount: 0
-      });
+      // Формируем данные для создания поста
+      await mysqlService.createPost({ content, imageUrl });
       
       setContent('');
       setImages([]);
       setImagePreviewUrls([]);
+      
+      // Вызываем колбэк для обновления списка постов
+      if (onPostCreated) {
+        onPostCreated();
+      }
       
     } catch (error) {
       console.error('Ошибка при создании поста:', error);
@@ -87,16 +84,16 @@ const CreatePost = () => {
       <form onSubmit={handleSubmit}>
         <div className="flex items-start space-x-4">
           <div className="flex-shrink-0">
-            {userData?.photoURL ? (
+            {currentUser?.photoURL ? (
               <img 
-                src={userData.photoURL} 
+                src={currentUser.photoURL} 
                 alt="Profile" 
                 className="h-10 w-10 rounded-full"
               />
             ) : (
               <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
                 <span className="text-gray-500 font-bold">
-                  {userData?.displayName?.charAt(0) || 'U'}
+                  {currentUser?.displayName?.charAt(0) || 'U'}
                 </span>
               </div>
             )}

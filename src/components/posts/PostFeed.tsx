@@ -1,73 +1,70 @@
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, onSnapshot, startAfter, getDocs, QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
-import { db } from '../../firebase/config';
 import PostItem from './PostItem';
 import CreatePost from './CreatePost';
 import { useAuth } from '../../contexts/AuthContext';
+import mysqlService, { Post } from '../../services/mysqlService';
 
 const PostFeed = () => {
   const { currentUser } = useAuth();
-  const [posts, setPosts] = useState<any[]>([]);
-  const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const postsPerPage = 5;
 
-  useEffect(() => {
-    const postsRef = collection(db, 'posts');
-    const postsQuery = query(
-      postsRef,
-      orderBy('createdAt', 'desc'),
-      limit(postsPerPage)
-    );
-
-    const unsubscribe = onSnapshot(postsQuery, (snapshot) => {
-      if (!snapshot.empty) {
-        const postsData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setPosts(postsData);
-        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-      } else {
-        setHasMore(false);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const loadMorePosts = async () => {
-    if (!lastVisible || !hasMore) return;
-    
-    setLoadingMore(true);
-    
+  // Функция для загрузки начальных постов
+  const loadPosts = async () => {
+    setLoading(true);
     try {
-      const postsRef = collection(db, 'posts');
-      const postsQuery = query(
-        postsRef,
-        orderBy('createdAt', 'desc'),
-        startAfter(lastVisible),
-        limit(postsPerPage)
-      );
+      const postsData = await mysqlService.getPosts();
+      setPosts(postsData);
       
-      const snapshot = await getDocs(postsQuery);
-      
-      if (!snapshot.empty) {
-        const newPosts = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        
-        setPosts(prevPosts => [...prevPosts, ...newPosts]);
-        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-      } else {
+      // Если получено меньше записей, чем лимит, значит больше нет
+      if (postsData.length < postsPerPage) {
         setHasMore(false);
       }
     } catch (error) {
       console.error('Ошибка при загрузке постов:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Загрузка постов при монтировании компонента
+  useEffect(() => {
+    loadPosts();
+  }, []);
+
+  // Функция обновления списка постов (после создания нового)
+  const refreshPosts = () => {
+    loadPosts();
+  };
+
+  // Функция для загрузки дополнительных постов
+  const loadMorePosts = async () => {
+    if (!hasMore || loadingMore) return;
+    
+    setLoadingMore(true);
+    
+    try {
+      const nextPage = page + 1;
+      // В реальном API нужно будет реализовать пагинацию
+      // Для примера используем обычный запрос
+      const morePosts = await mysqlService.getPosts();
+      
+      if (morePosts.length > 0) {
+        setPosts(prevPosts => [...prevPosts, ...morePosts]);
+        setPage(nextPage);
+        
+        if (morePosts.length < postsPerPage) {
+          setHasMore(false);
+        }
+      } else {
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке дополнительных постов:', error);
     } finally {
       setLoadingMore(false);
     }
@@ -77,7 +74,7 @@ const PostFeed = () => {
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-10">
       {currentUser && (
         <div className="mb-6">
-          <CreatePost />
+          <CreatePost onPostCreated={refreshPosts} />
         </div>
       )}
       
@@ -88,7 +85,11 @@ const PostFeed = () => {
       ) : posts.length > 0 ? (
         <div className="space-y-6">
           {posts.map(post => (
-            <PostItem key={post.id} post={post} />
+            <PostItem 
+              key={post.id} 
+              post={post} 
+              onPostUpdated={refreshPosts}
+            />
           ))}
           
           {hasMore && (

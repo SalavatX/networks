@@ -1,32 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { User } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { 
-  collection, 
-  doc, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  getDocs
-} from 'firebase/firestore';
-import { db } from '../../firebase/config';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { PaperAirplaneIcon, TrashIcon, UserIcon, ArrowLeftIcon } from '@heroicons/react/24/solid';
-
-interface Message {
-  id: string;
-  text: string;
-  senderId: string;
-  timestamp: { toDate: () => Date };
-  read: boolean;
-}
+import { PaperAirplaneIcon, UserIcon, ArrowLeftIcon, TrashIcon, DocumentIcon, PaperClipIcon } from '@heroicons/react/24/solid';
+import mysqlService from '../../services/mysqlService';
 
 interface ChatUser {
   uid: string;
@@ -34,20 +11,80 @@ interface ChatUser {
   photoURL: string | null;
 }
 
+// Определяем локальный интерфейс сообщения для компонента
+interface LocalMessage {
+  id: string;
+  text: string;
+  senderId: string;
+  createdAt: string;
+  read: boolean;
+  author?: {
+    uid: string;
+    displayName: string | null;
+    photoURL: string | null;
+  };
+  isDeleting?: boolean;
+  fileUrl?: string;
+  fileType?: 'image' | 'document';
+}
+
+// Вспомогательная функция для преобразования ApiMessage в LocalMessage
+const convertApiMessageToLocal = (msg: any): LocalMessage => {
+  // Определяем тип файла по расширению, если есть
+  let fileType: 'image' | 'document' | undefined;
+  if (msg.text && (msg.text.includes('http://') || msg.text.includes('https://'))) {
+    const fileUrl = msg.text.trim();
+    const lowercaseUrl = fileUrl.toLowerCase();
+    if (lowercaseUrl.endsWith('.jpg') || lowercaseUrl.endsWith('.jpeg') || 
+        lowercaseUrl.endsWith('.png') || lowercaseUrl.endsWith('.gif') || 
+        lowercaseUrl.endsWith('.webp')) {
+      fileType = 'image';
+    } else if (lowercaseUrl.endsWith('.pdf') || lowercaseUrl.endsWith('.doc') || 
+              lowercaseUrl.endsWith('.docx') || lowercaseUrl.endsWith('.txt') || 
+              lowercaseUrl.endsWith('.zip')) {
+      fileType = 'document';
+    }
+  }
+
+  return {
+    id: msg.id,
+    text: msg.text || '',
+    senderId: msg.senderId || '',
+    createdAt: msg.createdAt,
+    read: msg.read || false,
+    fileUrl: fileType ? msg.text : undefined,
+    fileType
+  };
+};
+
 interface ChatWindowProps {
   chatId: string | null;
-  currentUser: User;
+  currentUser: any;
   otherUser: ChatUser | null;
   onBackToList?: () => void;
 }
 
-const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindowProps) => {
+// Вспомогательная функция для нормализации пути к файлу
+function normalizeFileUrl(fileUrl: string): string {
+  if (!fileUrl) return '';
+  // Если уже полный URL, возвращаем как есть
+  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) return fileUrl;
+  // Удаляем лишние /uploads/
+  return fileUrl.replace(/(\\)?(uploads\\)+/g, '/uploads/').replace(/\\/g, '/').replace(/(\/)+/g, '/');
+}
+
+const ChatWindow = ({ currentUser, otherUser, onBackToList }: ChatWindowProps) => {
   const navigate = useNavigate();
-  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState<LocalMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const checkMessagesInterval = useRef<NodeJS.Timeout | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Определяем, является ли устройство мобильным
   useEffect(() => {
@@ -63,220 +100,330 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
     };
   }, []);
 
-  useEffect(() => {
-    if (!currentUser) return;
-    
-    const fetchOrCreateChat = async () => {
-      // Если у нас есть ID чата, получаем сообщения
-      if (chatId) {
-        const messagesRef = collection(db, 'messages');
-        const messagesQuery = query(
-          messagesRef,
-          where('chatId', '==', chatId),
-          orderBy('timestamp', 'asc')
-        );
-        
-        const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-          const messagesData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as Message[];
-          
-          setMessages(messagesData);
-          setLoading(false);
-          
-          // Отмечаем сообщения как прочитанные
-          messagesData.forEach(async (message) => {
-            if (message.senderId !== currentUser.uid && !message.read) {
-              await updateDoc(doc(db, 'messages', message.id), {
-                read: true
-              });
-            }
-          });
-        });
-        
-        return unsubscribe;
-      } 
-      else if (otherUser) {
-        setLoading(false);
-        return () => {};
-      }
-      
-      return () => {};
-    };
-    
-    const unsubscribePromise = fetchOrCreateChat();
-    
-    return () => {
-      unsubscribePromise.then(unsubscribe => {
-        if (typeof unsubscribe === 'function') {
-          unsubscribe();
-        }
-      }).catch(error => {
-        console.error('Ошибка при отписке от чата:', error);
-      });
-    };
-  }, [chatId, currentUser, otherUser]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !currentUser) return;
+  // Функция для получения сообщений
+  const fetchMessages = async () => {
+    if (!otherUser) return;
     
     try {
-      let chatDocRef;
+      const messagesData = await mysqlService.getMessages(otherUser.uid);
+      console.log('Ответ сервера (messagesData):', messagesData);
+      // Преобразуем сообщения с сервера в локальный формат
+      const serverMessages = messagesData.map(convertApiMessageToLocal);
       
-
-      if (chatId) {
-        chatDocRef = doc(db, 'chats', chatId);
-      } 
-
-      else if (otherUser) {
-        const chatsRef = collection(db, 'chats');
-        const chatsQuery = query(
-          chatsRef,
-          where('participants', 'array-contains', currentUser.uid)
+      // Обновляем только статусы прочтения и добавляем новые сообщения
+      setMessages(prevMessages => {
+        // Создаем новый массив
+        const updatedMessages = [...prevMessages];
+        
+        // Добавляем новые сообщения от сервера
+        for (const serverMsg of serverMessages) {
+          const existingMsgIndex = updatedMessages.findIndex(msg => msg.id === serverMsg.id);
+          
+          if (existingMsgIndex >= 0) {
+            // Обновляем только статус прочтения для существующих сообщений
+            updatedMessages[existingMsgIndex] = {
+              ...updatedMessages[existingMsgIndex],
+              read: serverMsg.read
+            };
+          } else {
+            // Добавляем новое сообщение
+            updatedMessages.push(serverMsg);
+          }
+        }
+        
+        // Удаляем временные сообщения, если их ID больше не существует на сервере
+        // (это нужно, только если они были отправлены с другого устройства)
+        const finalMessages = updatedMessages.filter(msg => 
+          !msg.id.startsWith('temp-') || 
+          !serverMessages.some(serverMsg => serverMsg.senderId === msg.senderId && 
+            Math.abs(new Date(serverMsg.createdAt).getTime() - new Date(msg.createdAt).getTime()) < 10000)
         );
         
-        const chatsSnapshot = await getDocs(chatsQuery);
-        const existingChat = chatsSnapshot.docs.find(doc => {
-          const data = doc.data();
-          return data.participants.includes(otherUser.uid);
-        });
+        // Сортируем сообщения по времени
+        finalMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         
-        if (existingChat) {
-          chatDocRef = doc(db, 'chats', existingChat.id);
-        } else {
-          const newChatRef = doc(collection(db, 'chats'));
-          await setDoc(newChatRef, {
-            participants: [currentUser.uid, otherUser.uid],
-            createdAt: serverTimestamp(),
-            lastMessage: {
-              text: newMessage,
+        return finalMessages;
+      });
+    } catch (error) {
+      console.error('Ошибка при загрузке сообщений:', error);
+      setError('Не удалось загрузить сообщения. Пожалуйста, попробуйте позже.');
+    }
+  };
+
+  // Загрузка сообщений при изменении пользователя
+  useEffect(() => {
+    if (!otherUser) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    fetchMessages().finally(() => {
+        setLoading(false);
+    });
+    
+    // Настраиваем периодическую проверку новых сообщений
+    checkMessagesInterval.current = setInterval(fetchMessages, 3000);
+    
+    return () => {
+      if (checkMessagesInterval.current) {
+        clearInterval(checkMessagesInterval.current);
+        }
+    };
+  }, [otherUser]);
+
+  // Прокрутка к последнему сообщению
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  // Функция для отправки сообщения
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !otherUser) return;
+    
+    const messageText = newMessage.trim();
+    setNewMessage('');
+    
+    try {
+      // Отображаем сообщение локально сразу
+      const tempId = `temp-${Date.now()}`;
+      const tempMessage: LocalMessage = {
+        id: tempId,
+        text: messageText,
               senderId: currentUser.uid,
-              timestamp: serverTimestamp()
-            }
-          });
-          
-          chatDocRef = newChatRef;
+        createdAt: new Date().toISOString(),
+        read: false,
+        author: {
+          uid: currentUser.uid,
+          displayName: currentUser.displayName,
+          photoURL: currentUser.photoURL
         }
-      } else {
-        return; // Нет получателя для сообщения
-      }
+      };
       
-      await addDoc(collection(db, 'messages'), {
-        chatId: chatDocRef.id,
-        text: newMessage,
-        senderId: currentUser.uid,
-        timestamp: serverTimestamp(),
-        read: false
-      });
+      // Добавляем временное сообщение для моментальной обратной связи
+      setMessages(prev => [...prev, tempMessage]);
       
-      await updateDoc(chatDocRef, {
-        lastMessage: {
-          text: newMessage,
-          senderId: currentUser.uid,
-          timestamp: serverTimestamp()
-        }
-      });
+      // Отправляем сообщение на сервер
+      const sentMessageData = await mysqlService.sendMessage(otherUser.uid, messageText);
       
-      setNewMessage('');
+      // Заменяем временное сообщение на настоящее, сохраняя текст
+      setMessages(prev => prev.map(msg => 
+        msg.id === tempId 
+          ? { 
+              ...msg,
+              id: sentMessageData.id,
+              createdAt: sentMessageData.createdAt || msg.createdAt,
+            } 
+          : msg
+      ));
     } catch (error) {
       console.error('Ошибка при отправке сообщения:', error);
+      
+      // Удаляем временное сообщение в случае ошибки
+      setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')));
+      alert('Не удалось отправить сообщение. Пожалуйста, попробуйте снова.');
     }
   };
 
-  const deleteMessage = async (messageId: string) => {
-    if (!currentUser) return;
-    
-    if (window.confirm('Вы уверены, что хотите удалить это сообщение?')) {
-      try {
-
-        await deleteDoc(doc(db, 'messages', messageId));
-        
-        setMessages(prevMessages => prevMessages.filter(msg => msg.id !== messageId));
-      } catch (error) {
-        console.error('Ошибка при удалении сообщения:', error);
-        alert('Не удалось удалить сообщение. Пожалуйста, попробуйте снова.');
-      }
-    }
-  };
-
+  // Переход к профилю пользователя
   const goToUserProfile = () => {
     if (otherUser) {
       navigate(`/profile/${otherUser.uid}`);
     }
   };
 
-  const formatDate = (date: Date) => {
+  // Формат времени сообщения
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
     return formatDistanceToNow(date, { addSuffix: true, locale: ru });
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
-      </div>
-    );
+  // Обработка нажатия Enter для отправки сообщения
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  // Функция для удаления сообщения
+  const deleteMessage = async (messageId: string) => {
+    try {
+      // Показываем визуальный эффект удаления сразу
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, isDeleting: true } 
+          : msg
+      ));
+      
+      // Вызываем API для удаления сообщения
+      await mysqlService.deleteMessage(messageId);
+      
+      // Удаляем сообщение из локального состояния
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
+      
+      // Сбрасываем выбранное сообщение
+      setSelectedMessage(null);
+    } catch (error) {
+      console.error('Ошибка при удалении сообщения:', error);
+      
+      // Убираем эффект удаления в случае ошибки
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, isDeleting: false } 
+          : msg
+      ));
+      
+      alert('Не удалось удалить сообщение. Пожалуйста, попробуйте снова.');
+    }
+  };
+
+  // Обработчик долгого нажатия/клика на сообщение
+  const handleMessageAction = (messageId: string, isOwnMessage: boolean) => {
+    if (isOwnMessage) {
+      setSelectedMessage(prevId => prevId === messageId ? null : messageId);
+    }
+  };
+
+  // Функция для загрузки файла
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !otherUser) return;
+    
+    const file = files[0];
+    setIsUploading(true);
+    
+    try {
+      // Загружаем файл на сервер
+      const response = await mysqlService.uploadFile(file, 'messages');
+      
+      // Отправляем ссылку на файл как сообщение
+      if (response && response.fileUrl) {
+        // Отображаем сообщение локально сразу
+        const tempId = `temp-${Date.now()}`;
+        const fileUrl = normalizeFileUrl(response.fileUrl);
+        
+        // Определяем тип файла
+        const lowercaseFileName = file.name.toLowerCase();
+        const fileType = lowercaseFileName.endsWith('.jpg') || 
+                         lowercaseFileName.endsWith('.jpeg') || 
+                         lowercaseFileName.endsWith('.png') || 
+                         lowercaseFileName.endsWith('.gif') || 
+                         lowercaseFileName.endsWith('.webp') 
+                         ? 'image' : 'document';
+        
+        const tempMessage: LocalMessage = {
+          id: tempId,
+          text: fileUrl,
+          senderId: currentUser.uid,
+          createdAt: new Date().toISOString(),
+          read: false,
+          author: {
+            uid: currentUser.uid,
+            displayName: currentUser.displayName,
+            photoURL: currentUser.photoURL
+          },
+          fileUrl,
+          fileType
+        };
+        
+        // Добавляем временное сообщение для моментальной обратной связи
+        setMessages(prev => [...prev, tempMessage]);
+        
+        // Отправляем сообщение на сервер
+        const sentMessageData = await mysqlService.sendMessage(otherUser.uid, fileUrl);
+        
+        // Заменяем временное сообщение на настоящее, сохраняя данные файла
+        setMessages(prev => prev.map(msg => 
+          msg.id === tempId 
+            ? { 
+                ...msg,
+                id: sentMessageData.id,
+                createdAt: sentMessageData.createdAt || msg.createdAt,
+              } 
+            : msg
+        ));
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке файла:', error);
+      alert('Не удалось загрузить файл. Пожалуйста, попробуйте снова.');
+    } finally {
+      setIsUploading(false);
+      // Очищаем input для возможности повторной загрузки того же файла
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Функция открытия диалога выбора файла
+  const openFileDialog = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
   }
+  };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Заголовок чата */}
-      <div className="p-4 border-b border-gray-200 flex items-center">
+    <div className="flex flex-col h-full">
+      {/* Заголовок с пользователем */}
+      <div className="px-4 py-3 bg-gray-50 border-b flex items-center">
         {isMobile && onBackToList && (
           <button 
             onClick={onBackToList}
-            className="mr-2 text-gray-600 hover:text-indigo-600 transition-colors"
+            className="mr-2 text-gray-600 hover:text-gray-900"
           >
             <ArrowLeftIcon className="h-5 w-5" />
           </button>
         )}
         
-        {otherUser ? (
-          <div 
-            className="flex items-center cursor-pointer hover:opacity-80 flex-1 min-w-0"
-            onClick={goToUserProfile}
-          >
-            {otherUser.photoURL ? (
+        <div className="flex-1 flex items-center" onClick={goToUserProfile}>
+          {otherUser?.photoURL ? (
               <img 
                 src={otherUser.photoURL} 
                 alt={otherUser.displayName || 'Пользователь'} 
-                className="h-10 w-10 rounded-full mr-3 flex-shrink-0"
+              className="h-10 w-10 rounded-full mr-3 cursor-pointer"
               />
             ) : (
-              <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center mr-3 flex-shrink-0">
-                <UserIcon className="h-5 w-5 text-gray-500" />
-              </div>
-            )}
-            <div className="min-w-0">
-              <h2 className="text-lg font-medium text-gray-900 hover:underline truncate">
-                {otherUser.displayName || 'Пользователь'}
-              </h2>
-              <p className="text-xs text-gray-500 truncate">
-                Нажмите, чтобы перейти в профиль
-              </p>
+            <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center mr-3 cursor-pointer">
+              <UserIcon className="h-6 w-6 text-gray-600" />
             </div>
-          </div>
-        ) : (
-          <div className="flex items-center flex-1 min-w-0">
-            <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center mr-3 flex-shrink-0">
-              <UserIcon className="h-5 w-5 text-gray-500" />
-            </div>
-            <h2 className="text-lg font-medium text-gray-900 truncate">
-              Загрузка...
+          )}
+          <div>
+            <h2 className="font-medium text-gray-900 cursor-pointer">
+              {otherUser?.displayName || 'Пользователь'}
             </h2>
           </div>
-        )}
+        </div>
       </div>
       
       {/* Сообщения */}
-      <div className="flex-1 p-4 overflow-y-auto overflow-x-hidden">
-        {messages.length > 0 ? (
-          <div className="space-y-4">
-            {messages.map(message => {
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {loading && messages.length === 0 ? (
+          <div className="flex justify-center items-center h-full">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+          </div>
+        ) : error ? (
+          <div className="text-center py-8">
+            <p className="text-red-600 mb-2">{error}</p>
+            <button 
+              onClick={goToUserProfile}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Перейти к профилю пользователя
+            </button>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500 mb-2">
+              У вас пока нет сообщений с этим пользователем.
+            </p>
+            <p className="text-gray-500 mb-4">
+              Начните диалог, отправив первое сообщение.
+            </p>
+          </div>
+        ) : (
+          messages.map(message => {
               const isCurrentUser = message.senderId === currentUser.uid;
               
               return (
@@ -285,64 +432,131 @@ const ChatWindow = ({ chatId, currentUser, otherUser, onBackToList }: ChatWindow
                   className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                 >
                   <div 
-                    className={`max-w-xs sm:max-w-md px-4 py-2 rounded-lg ${
+                  className={`relative max-w-[70%] px-4 py-2 rounded-lg ${
                       isCurrentUser 
-                        ? 'bg-indigo-600 text-white' 
-                        : 'bg-gray-100 text-gray-800'
-                    } relative group break-words`}
-                  >
-                    <p className="whitespace-pre-wrap">{message.text}</p>
-                    {message.timestamp && (
-                      <p className={`text-xs mt-1 ${isCurrentUser ? 'text-indigo-200' : 'text-gray-500'}`}>
-                        {formatDate(message.timestamp.toDate())}
-                      </p>
-                    )}
-                    
-                    {isCurrentUser && (
+                      ? 'bg-indigo-600 text-white rounded-br-none' 
+                      : 'bg-gray-200 text-gray-800 rounded-bl-none'
+                  } ${message.isDeleting ? 'opacity-50' : ''}`}
+                  onClick={() => handleMessageAction(message.id, isCurrentUser)}
+                >
+                  {/* Показываем кнопку удаления для выбранного сообщения */}
+                  {selectedMessage === message.id && isCurrentUser && (
+                    <div className="absolute -top-8 right-0 bg-white rounded-lg shadow-md p-1 z-10">
                       <button 
-                        onClick={() => deleteMessage(message.id)}
-                        className="absolute -right-6 top-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Удалить сообщение"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteMessage(message.id);
+                        }}
+                        className="text-red-600 hover:text-red-800 focus:outline-none p-1"
                       >
                         <TrashIcon className="h-4 w-4" />
                       </button>
+                    </div>
                     )}
+                  
+                  {/* Отображение содержимого сообщения в зависимости от типа */}
+                  {message.fileType === 'image' ? (
+                    <div>
+                      <img 
+                        src={normalizeFileUrl(message.fileUrl || '')} 
+                        alt="Изображение" 
+                        className="max-w-full rounded-lg mb-2 max-h-[300px] object-contain"
+                        loading="lazy"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(normalizeFileUrl(message.fileUrl || ''), '_blank');
+                        }}
+                      />
+                      <p className="text-xs">Изображение</p>
+                    </div>
+                  ) : message.fileType === 'document' ? (
+                    <div 
+                      className="flex items-center cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(normalizeFileUrl(message.fileUrl || ''), '_blank');
+                      }}
+                    >
+                      <DocumentIcon className={`h-8 w-8 ${isCurrentUser ? 'text-white' : 'text-gray-700'} mr-2`} />
+                      <div className="overflow-hidden">
+                        <p className="text-sm truncate">Документ</p>
+                        <p className="text-xs truncate">{message.text.split('/').pop()}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm break-words">{message.text}</p>
+                  )}
+                  
+                  <p className={`text-xs mt-1 ${isCurrentUser ? 'text-indigo-200' : 'text-gray-500'}`}>
+                    {formatDate(message.createdAt)}
+                    {isCurrentUser && (
+                      <span className="ml-2">
+                        {message.read ? '✓✓' : '✓'}
+                      </span>
+                    )}
+                  </p>
                   </div>
                 </div>
               );
-            })}
-            <div ref={messagesEndRef} />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-gray-500">
-              {chatId 
-                ? 'Нет сообщений. Начните общение!' 
-                : 'Начните новый чат с этим пользователем'}
-            </p>
-          </div>
+          })
         )}
+            <div ref={messagesEndRef} />
       </div>
       
-      {/* Форма отправки сообщения */}
-      <div className="p-4 border-t border-gray-200">
+      {/* Ввод сообщения с добавленной кнопкой для загрузки файлов */}
+      <div className="px-4 py-3 bg-gray-50 border-t">
         <div className="flex items-center">
+          <button
+            onClick={openFileDialog}
+            disabled={isUploading}
+            className={`p-2 rounded-full mr-2 ${
+              isUploading 
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+            }`}
+          >
+            <PaperClipIcon className="h-5 w-5" />
+          </button>
+          
           <input
-            type="text"
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+            accept="image/*,.pdf,.doc,.docx,.txt,.zip"
+          />
+          
+          <textarea
+            rows={1}
+            className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+            placeholder={isUploading ? "Загрузка файла..." : "Введите сообщение..."}
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Введите сообщение..."
-            className="flex-1 border border-gray-300 rounded-l-md py-2 px-4 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+            onKeyDown={handleKeyDown}
+            disabled={isUploading}
           />
+          
           <button
             onClick={sendMessage}
-            disabled={!newMessage.trim()}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-r-md px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!newMessage.trim() || isUploading}
+            className={`ml-2 p-2 rounded-full ${
+              !newMessage.trim() || isUploading
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+            }`}
           >
             <PaperAirplaneIcon className="h-5 w-5" />
           </button>
         </div>
+        
+        {isUploading && (
+          <div className="mt-2 text-center">
+            <div className="inline-flex items-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-indigo-500 mr-2"></div>
+              <span className="text-sm text-gray-600">Загрузка файла...</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

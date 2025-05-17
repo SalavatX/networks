@@ -1,19 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { collection, query, where, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
-import { db } from '../../firebase/config';
 import { useAuth } from '../../contexts/AuthContext';
 import ChatList from './ChatList';
 import ChatWindow from './ChatWindow';
+import mysqlService from '../../services/mysqlService';
 
 interface Chat {
   id: string;
-  participants: string[];
+  otherUser: {
+    uid: string;
+    displayName: string | null;
+    photoURL: string | null;
+  };
   lastMessage: {
     text: string;
     senderId: string;
-    timestamp: { toDate: () => Date };
-  };
+    timestamp: string;
+  } | null;
   unreadCount: number;
 }
 
@@ -28,7 +31,6 @@ const Messages = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [chats, setChats] = useState<Chat[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,61 +63,38 @@ const Messages = () => {
   useEffect(() => {
     if (!currentUser) return;
 
-    const chatsRef = collection(db, 'chats');
-    const chatsQuery = query(
-      chatsRef,
-      where('participants', 'array-contains', currentUser.uid),
-      orderBy('lastMessage.timestamp', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(chatsQuery, async (snapshot) => {
-      const chatsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Chat[];
-      
-      setChats(chatsData);
-      
-      const userIds = new Set<string>();
-      chatsData.forEach(chat => {
-        chat.participants.forEach(participantId => {
-          if (participantId !== currentUser.uid) {
-            userIds.add(participantId);
-          }
-        });
-      });
-      
-      if (userIds.size > 0) {
-        const usersRef = collection(db, 'users');
-        const usersSnapshot = await getDocs(usersRef);
-        const usersData = usersSnapshot.docs
-          .filter(doc => userIds.has(doc.id))
-          .map(doc => ({
-            uid: doc.id,
-            ...doc.data()
-          })) as User[];
+    const fetchChats = async () => {
+      try {
+        setLoading(true);
+        // Получаем беседы через MySQL API
+        const conversations = await mysqlService.getConversations();
         
-        setUsers(usersData);
+        // Преобразуем в нужный формат для компонента
+        const formattedChats: Chat[] = conversations.map((conv: any) => ({
+          id: conv.id,
+          otherUser: conv.otherUser,
+          lastMessage: conv.lastMessage,
+          unreadCount: conv.unreadCount
+        }));
+        
+        setChats(formattedChats);
+        
+        setLoading(false);
+      } catch (error) {
+        console.error('Ошибка при загрузке чатов:', error);
+        setLoading(false);
       }
-      
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchChats();
   }, [currentUser]);
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChat(chatId);
     
     const chat = chats.find(c => c.id === chatId);
-    if (chat) {
-      const otherUserId = chat.participants.find(id => id !== currentUser?.uid);
-      if (otherUserId) {
-        const user = users.find(u => u.uid === otherUserId);
-        if (user) {
-          setSelectedUser(user);
-        }
-      }
+    if (chat && chat.otherUser) {
+      setSelectedUser(chat.otherUser);
     }
     
     if (isMobile) {
@@ -124,11 +103,9 @@ const Messages = () => {
   };
 
   const handleStartNewChat = (user: User) => {
-
+    // Проверяем, есть ли уже чат с этим пользователем
     const existingChat = chats.find(chat => 
-      chat.participants.length === 2 && 
-      chat.participants.includes(user.uid) && 
-      chat.participants.includes(currentUser?.uid || '')
+      chat.otherUser && chat.otherUser.uid === user.uid
     );
     
     if (existingChat) {
@@ -190,7 +167,6 @@ const Messages = () => {
             <div className={`${isMobile ? 'w-full' : 'w-1/3'} border-r border-gray-200 overflow-hidden`}>
               <ChatList 
                 chats={chats} 
-                users={users} 
                 currentUserId={currentUser.uid} 
                 selectedChatId={selectedChat}
                 onSelectChat={handleSelectChat}

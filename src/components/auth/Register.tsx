@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../../firebase/config';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Register = () => {
   const [name, setName] = useState('');
@@ -12,6 +10,7 @@ const Register = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { signUp } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,27 +23,7 @@ const Register = () => {
     setLoading(true);
 
     try {
-      
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-     
-      await updateProfile(user, {
-        displayName: name
-      });
-
-      
-      await setDoc(doc(db, 'users', user.uid), {
-        uid: user.uid,
-        displayName: name,
-        email: user.email,
-        photoURL: '',
-        bio: '',
-        createdAt: new Date().toISOString(),
-        followers: [],
-        following: []
-      });
-
+      await signUp(email, password, name);
       navigate('/');
     } catch (err: any) {
       setError(err.message || 'Произошла ошибка при регистрации');

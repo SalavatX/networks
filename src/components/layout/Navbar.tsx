@@ -11,7 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 const Navbar = () => {
-  const { currentUser, userData, signOut } = useAuth();
+  const { currentUser, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const toggleMenu = () => {
@@ -45,10 +45,10 @@ const Navbar = () => {
                 </Link>
                 
                 <Link to={`/profile/${currentUser.uid}`} className="text-gray-600 hover:text-indigo-600 p-2 rounded-md transition-colors">
-                  {userData?.photoURL ? (
+                  {currentUser.photoURL ? (
                     <img 
-                      src={userData.photoURL} 
-                      alt={userData.displayName || 'Пользователь'} 
+                      src={currentUser.photoURL} 
+                      alt={currentUser.displayName || 'Пользователь'} 
                       className="h-8 w-8 rounded-full border-2 border-indigo-100"
                     />
                   ) : (

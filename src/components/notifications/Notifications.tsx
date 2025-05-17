@@ -1,24 +1,23 @@
-import { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { BellIcon, HeartIcon, ChatBubbleLeftIcon, UserIcon } from '@heroicons/react/24/outline';
+import mysqlService from '../../services/mysqlService';
 
 interface Notification {
   id: string;
   type: 'like' | 'comment' | 'follow' | 'message';
-  senderId: string;
-  senderName: string;
-  senderPhotoURL: string | null;
-  recipientId: string;
-  postId?: string;
-  commentId?: string;
+  isRead: boolean;
+  createdAt: string;
+  sender: {
+    uid: string;
+    displayName: string | null;
+    photoURL: string | null;
+  };
+  referenceId: string;
   message?: string;
-  createdAt: { toDate: () => Date };
-  read: boolean;
 }
 
 const Notifications = () => {
@@ -28,59 +27,56 @@ const Notifications = () => {
 
   useEffect(() => {
     if (!currentUser) return;
-    const notificationsRef = collection(db, 'notifications');
-    const notificationsQuery = query(
-      notificationsRef,
-      where('recipientId', '==', currentUser.uid),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-
-    const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
-      const notificationsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Notification[];
-      
-      setNotifications(notificationsData);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    setLoading(true);
+    mysqlService.getNotifications()
+      .then((data) => {
+        setNotifications(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setNotifications([]);
+        setLoading(false);
+      });
   }, [currentUser]);
 
+  // Группировка сообщений: если есть несколько непрочитанных сообщений от одного пользователя — показываем как одно уведомление
+  const groupedNotifications = useMemo(() => {
+    const result: Notification[] = [];
+    const messageMap = new Map<string, Notification>();
+    for (const n of notifications) {
+      if (n.type === 'message' && !n.isRead) {
+        // Ключ — отправитель
+        if (!messageMap.has(n.sender.uid)) {
+          messageMap.set(n.sender.uid, n);
+        }
+      } else {
+        result.push(n);
+      }
+    }
+    // Добавляем сгруппированные сообщения
+    result.push(...Array.from(messageMap.values()));
+    // Сортируем по дате
+    return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [notifications]);
+
   const markAsRead = async (notificationId: string) => {
-    if (!currentUser) return;
-    
     try {
-      const notificationRef = doc(db, 'notifications', notificationId);
-      await updateDoc(notificationRef, {
-        read: true
-      });
+      await mysqlService.markNotificationAsRead(notificationId);
+      setNotifications((prev) => prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n));
     } catch (error) {
-      console.error('Ошибка при отметке уведомления как прочитанного:', error);
+      // ignore
     }
   };
 
   const markAllAsRead = async () => {
-    if (!currentUser) return;
-    
-    try {
-      const unreadNotifications = notifications.filter(notification => !notification.read);
-      
-      for (const notification of unreadNotifications) {
-        const notificationRef = doc(db, 'notifications', notification.id);
-        await updateDoc(notificationRef, {
-          read: true
-        });
-      }
-    } catch (error) {
-      console.error('Ошибка при отметке всех уведомлений как прочитанных:', error);
+    const unread = groupedNotifications.filter(n => !n.isRead);
+    for (const n of unread) {
+      await markAsRead(n.id);
     }
   };
 
-  const formatDate = (date: Date) => {
-    return formatDistanceToNow(date, { addSuffix: true, locale: ru });
+  const formatDate = (dateStr: string) => {
+    return formatDistanceToNow(new Date(dateStr), { addSuffix: true, locale: ru });
   };
 
   const getNotificationIcon = (type: string) => {
@@ -103,7 +99,7 @@ const Notifications = () => {
       case 'like':
         return `поставил(а) лайк на вашу публикацию`;
       case 'comment':
-        return `оставил(а) комментарий: "${notification.message}"`;
+        return `оставил(а) комментарий: "${notification.message || ''}"`;
       case 'follow':
         return `подписался(ась) на вас`;
       case 'message':
@@ -117,9 +113,9 @@ const Notifications = () => {
     switch (notification.type) {
       case 'like':
       case 'comment':
-        return `/post/${notification.postId}`;
+        return `/post/${notification.referenceId}`;
       case 'follow':
-        return `/profile/${notification.senderId}`;
+        return `/profile/${notification.sender.uid}`;
       case 'message':
         return `/messages`;
       default:
@@ -150,7 +146,7 @@ const Notifications = () => {
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Уведомления</h1>
-        {notifications.some(notification => !notification.read) && (
+        {groupedNotifications.some(notification => !notification.isRead) && (
           <button
             onClick={markAllAsRead}
             className="text-sm text-indigo-600 hover:text-indigo-800"
@@ -160,30 +156,30 @@ const Notifications = () => {
         )}
       </div>
 
-      {notifications.length > 0 ? (
+      {groupedNotifications.length > 0 ? (
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <ul className="divide-y divide-gray-200">
-            {notifications.map(notification => (
+            {groupedNotifications.map(notification => (
               <li 
                 key={notification.id}
-                className={`p-4 hover:bg-gray-50 ${!notification.read ? 'bg-indigo-50' : ''}`}
+                className={`p-4 hover:bg-gray-50 ${!notification.isRead ? 'bg-indigo-50' : ''}`}
               >
                 <Link 
                   to={getNotificationLink(notification)}
-                  onClick={() => !notification.read && markAsRead(notification.id)}
+                  onClick={() => !notification.isRead && markAsRead(notification.id)}
                   className="flex items-start space-x-3"
                 >
                   <div className="flex-shrink-0">
-                    {notification.senderPhotoURL ? (
+                    {notification.sender.photoURL ? (
                       <img 
-                        src={notification.senderPhotoURL} 
-                        alt={notification.senderName} 
+                        src={notification.sender.photoURL} 
+                        alt={notification.sender.displayName || 'Пользователь'} 
                         className="h-10 w-10 rounded-full"
                       />
                     ) : (
                       <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
                         <span className="text-gray-500 font-bold">
-                          {notification.senderName.charAt(0)}
+                          {notification.sender.displayName?.charAt(0) || 'U'}
                         </span>
                       </div>
                     )}
@@ -191,7 +187,7 @@ const Notifications = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-gray-900">
-                        <span className="font-bold">{notification.senderName}</span>{' '}
+                        <span className="font-bold">{notification.sender.displayName || 'Пользователь'}</span>{' '}
                         {getNotificationText(notification)}
                       </p>
                       <div className="ml-2 flex-shrink-0">
@@ -199,7 +195,7 @@ const Notifications = () => {
                       </div>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      {formatDate(notification.createdAt.toDate())}
+                      {formatDate(notification.createdAt)}
                     </p>
                   </div>
                 </Link>

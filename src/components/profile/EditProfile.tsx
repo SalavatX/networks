@@ -1,17 +1,16 @@
 import { useState, useRef } from 'react';
-import { doc, updateDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
-import { db, auth, storage } from '../../firebase/config';
 import { XMarkIcon, PhotoIcon } from '@heroicons/react/24/outline';
+import mysqlService from '../../services/mysqlService';
 
 interface ProfileData {
   uid: string;
   displayName: string | null;
-  email: string | null;
+  email?: string | null;
   photoURL: string | null;
-  bio: string;
-  followers: string[];
-  following: string[];
+  bio?: string;
+  followersCount?: number;
+  followingCount?: number;
+  isFollowing?: boolean;
 }
 
 interface EditProfileProps {
@@ -26,9 +25,9 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
   const [photoURL] = useState(profileData.photoURL || '');
   const [newPhoto, setNewPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(photoURL);
-  const [loading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [, setError] = useState('');
+  const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -46,54 +45,34 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
     
     if (isSubmitting) return;
     setIsSubmitting(true);
+    setLoading(true);
+    setError('');
     
     try {
       let updatedPhotoURL = photoURL;
       
       if (newPhoto) {
         try {
-          const storageRef = storage.ref(`users/${profileData.uid}`);
-          const uploadTask = await storageRef.put(newPhoto);
-          updatedPhotoURL = await uploadTask.ref.getDownloadURL();
+          // Загружаем файл через MySQL API
+          const uploadResponse = await mysqlService.uploadFile(newPhoto, 'avatars');
+          updatedPhotoURL = uploadResponse.fileUrl;
         } catch (error) {
           console.error('Ошибка при загрузке фото:', error);
+          setError('Не удалось загрузить фото. Пожалуйста, попробуйте снова.');
+          setLoading(false);
+          setIsSubmitting(false);
+          return;
         }
       }
       
-      const userDocRef = doc(db, 'users', profileData.uid);
-      const updatedData = {
+      // Обновляем профиль пользователя
+      const updatedData = await mysqlService.updateProfile({
         displayName,
         bio,
         photoURL: updatedPhotoURL
-      };
+      });
       
-      await updateDoc(userDocRef, updatedData);
-      
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, {
-          displayName,
-          photoURL: updatedPhotoURL
-        });
-      }
-      
-      try {
-        const postsRef = collection(db, 'posts');
-        const postsQuery = query(postsRef, where('authorId', '==', profileData.uid));
-        const postsSnapshot = await getDocs(postsQuery);
-        
-        const batch = writeBatch(db);
-        postsSnapshot.docs.forEach(postDoc => {
-          batch.update(postDoc.ref, {
-            authorName: displayName,
-            authorPhotoURL: updatedPhotoURL
-          });
-        });
-        
-        await batch.commit();
-      } catch (error) {
-        console.error('Ошибка при обновлении постов:', error);
-      }
-      
+      // Передаем обновленные данные родительскому компоненту
       onUpdate(updatedData);
       onClose();
       
@@ -101,6 +80,7 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
       console.error('Ошибка при обновлении профиля:', error);
       setError('Не удалось обновить профиль. Пожалуйста, попробуйте снова.');
     } finally {
+      setLoading(false);
       setIsSubmitting(false);
     }
   };
@@ -122,6 +102,12 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
         </div>
         
         <form onSubmit={handleSubmit} className="p-4">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md">
+              {error}
+            </div>
+          )}
+          
           <div className="mb-4 flex flex-col items-center">
             <div className="relative">
               {photoPreview ? (
