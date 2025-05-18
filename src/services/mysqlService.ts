@@ -1,5 +1,5 @@
 // Сервис для работы с MySQL через REST API
-const API_URL = 'http://localhost:3001/api';
+const API_URL = 'https://networks-ez91.onrender.com/api';
 
 // Типы данных
 export interface User {
