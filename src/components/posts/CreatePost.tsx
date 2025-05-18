@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { yandexStorage } from '../../services/yandexStorage';
 import mysqlService from '../../services/mysqlService';
 
 interface CreatePostProps {
@@ -53,8 +54,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onPostCreated }) => {
       if (images.length > 0) {
         try {
           // Загружаем только первое изображение (для простоты)
-          const uploadResult = await mysqlService.uploadFile(images[0], 'posts');
-          imageUrl = uploadResult.fileUrl;
+          imageUrl = await yandexStorage.upload(images[0], 'posts');
         } catch (error) {
           console.error('Ошибка при загрузке изображения:', error);
         }

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { storage } from '../../firebase/config';
+import { yandexStorage } from '../../services/yandexStorage';
 import { PhotoIcon } from '@heroicons/react/24/outline';
 
 interface FileUploadProps {
@@ -41,14 +41,7 @@ const FileUpload = ({
 
     try {
       
-      const timestamp = new Date().getTime();
-      const fileName = `${timestamp}_${file.name}`;
-      const storageRef = storage.ref(`${folder}/${fileName}`);
-
-      
-      const uploadTask = await storageRef.put(file);
-      
-      const downloadURL = await uploadTask.ref.getDownloadURL();
+      const downloadURL = await yandexStorage.upload(file, folder);
       
       onFileUpload(downloadURL);
       

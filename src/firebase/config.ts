@@ -2,7 +2,7 @@
 // Все операции Firebase должны быть перенаправлены на mysqlService
 
 // Импортируем storage из yandexStorage для совместимости
-import { storage } from '../services/yandexStorage';
+import { yandexStorage as storage } from '../services/yandexStorage';
 
 // Создаем фиктивную Firebase конфигурацию
 const firebaseConfig = {

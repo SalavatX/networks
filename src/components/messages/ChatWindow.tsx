@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { PaperAirplaneIcon, UserIcon, ArrowLeftIcon, TrashIcon, DocumentIcon, PaperClipIcon } from '@heroicons/react/24/solid';
-import mysqlService from '../../services/mysqlService';
+import { yandexStorage } from '../../services/yandexStorage';
 
 interface ChatUser {
   uid: string;
@@ -295,24 +295,11 @@ const ChatWindow = ({ currentUser, otherUser, onBackToList }: ChatWindowProps) =
     setIsUploading(true);
     
     try {
-      // Загружаем файл на сервер
-      const response = await mysqlService.uploadFile(file, 'messages');
-      
-      // Отправляем ссылку на файл как сообщение
-      if (response && response.fileUrl) {
+      // Загружаем файл в Яндекс.Облако
+      const fileUrl = await yandexStorage.upload(file, 'messages');
+      if (fileUrl) {
         // Отображаем сообщение локально сразу
         const tempId = `temp-${Date.now()}`;
-        const fileUrl = normalizeFileUrl(response.fileUrl);
-        
-        // Определяем тип файла
-        const lowercaseFileName = file.name.toLowerCase();
-        const fileType = lowercaseFileName.endsWith('.jpg') || 
-                         lowercaseFileName.endsWith('.jpeg') || 
-                         lowercaseFileName.endsWith('.png') || 
-                         lowercaseFileName.endsWith('.gif') || 
-                         lowercaseFileName.endsWith('.webp') 
-                         ? 'image' : 'document';
-        
         const tempMessage: LocalMessage = {
           id: tempId,
           text: fileUrl,
@@ -325,7 +312,12 @@ const ChatWindow = ({ currentUser, otherUser, onBackToList }: ChatWindowProps) =
             photoURL: currentUser.photoURL
           },
           fileUrl,
-          fileType
+          fileType: file.name.toLowerCase().endsWith('.jpg') || 
+                   file.name.toLowerCase().endsWith('.jpeg') || 
+                   file.name.toLowerCase().endsWith('.png') || 
+                   file.name.toLowerCase().endsWith('.gif') || 
+                   file.name.toLowerCase().endsWith('.webp') 
+                   ? 'image' : 'document'
         };
         
         // Добавляем временное сообщение для моментальной обратной связи

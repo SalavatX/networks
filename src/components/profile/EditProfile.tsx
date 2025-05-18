@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { XMarkIcon, PhotoIcon } from '@heroicons/react/24/outline';
+import { yandexStorage } from '../../services/yandexStorage';
 import mysqlService from '../../services/mysqlService';
 
 interface ProfileData {
@@ -53,9 +54,7 @@ const EditProfile = ({ profileData, onClose, onUpdate }: EditProfileProps) => {
       
       if (newPhoto) {
         try {
-          // Загружаем файл через MySQL API
-          const uploadResponse = await mysqlService.uploadFile(newPhoto, 'avatars');
-          updatedPhotoURL = uploadResponse.fileUrl;
+          updatedPhotoURL = await yandexStorage.upload(newPhoto, 'avatars');
         } catch (error) {
           console.error('Ошибка при загрузке фото:', error);
           setError('Не удалось загрузить фото. Пожалуйста, попробуйте снова.');

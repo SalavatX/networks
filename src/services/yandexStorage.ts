@@ -12,71 +12,27 @@ const s3 = new AWS.S3({
 });
 
 const BUCKET_NAME = import.meta.env.VITE_YANDEX_BUCKET_NAME;
+console.log('BUCKET_NAME:', BUCKET_NAME);
 
-export const storage = {
-  ref: (path: string) => ({
-    put: async (file: File) => {
-      const uniqueFileName = `${Date.now()}_${file.name}`;
-      const fullPath = path ? `${path}/${uniqueFileName}` : uniqueFileName;
-      
-      const params = {
-        Bucket: BUCKET_NAME,
-        Key: fullPath,
-        Body: file,
-        ContentType: file.type,
-        ACL: 'public-read'
-      };
-
-      try {
-        console.log('Загрузка файла в Яндекс.Облако:', fullPath);
-        const data = await s3.upload(params).promise();
-        console.log('Файл успешно загружен:', data.Location);
-        
-        return {
-          ref: {
-            getDownloadURL: async () => data.Location
-          }
-        };
-      } catch (error) {
-        console.error('Ошибка при загрузке файла в Яндекс.Облако:', error);
-        throw error;
-      }
-    },
-    child: (childPath: string) => ({
-      put: async (file: File) => {
-        const uniqueFileName = `${Date.now()}_${file.name}`;
-        const fullPath = path 
-          ? `${path}/${childPath}/${uniqueFileName}` 
-          : `${childPath}/${uniqueFileName}`;
-        
-        const params = {
-          Bucket: BUCKET_NAME,
-          Key: fullPath,
-          Body: file,
-          ContentType: file.type,
-          ACL: 'public-read'
-        };
-
-        try {
-          console.log('Загрузка файла в Яндекс.Облако:', fullPath);
-          const data = await s3.upload(params).promise();
-          console.log('Файл успешно загружен:', data.Location);
-          
-          return {
-            ref: {
-              getDownloadURL: async () => data.Location
-            }
-          };
-        } catch (error) {
-          console.error('Ошибка при загрузке файла в Яндекс.Облако:', error);
-          throw error;
-        }
-      }
-    }),
-    get path() {
-      return path;
+export const yandexStorage = {
+  upload: async (file: File, folder: string = 'uploads') => {
+    const uniqueFileName = `${Date.now()}_${file.name}`;
+    const Key = folder ? `${folder}/${uniqueFileName}` : uniqueFileName;
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key,
+      Body: file,
+      ContentType: file.type,
+      ACL: 'public-read',
+    };
+    try {
+      const data = await s3.upload(params).promise();
+      return data.Location as string;
+    } catch (error) {
+      console.error('Ошибка при загрузке файла в Яндекс.Облако:', error);
+      throw error;
     }
-  })
+  }
 };
 
-export default storage; 
+export default yandexStorage; 
