@@ -1,5 +1,5 @@
 // Адрес локального сервера для хранения файлов
-const SERVER_URL = 'http://localhost:3001';
+const SERVER_URL = import.meta.env.VITE_API_URL?.replace(/\/api$/, '') || 'https://networks-ez91.onrender.com';
 
 export const storage = {
   ref: (path: string) => ({

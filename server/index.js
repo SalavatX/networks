@@ -612,8 +612,7 @@ app.post('/api/upload', authenticate, (req, res, next) => {
       }
       // Получаем только имя файла
       const fileName = req.file.filename;
-      const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${fileName}`;
-      res.json({ fileUrl });
+      res.json({ fileUrl: `https://networks-ez91.onrender.com/uploads/${fileName}` });
     } catch (error) {
       console.error('Ошибка при загрузке файла:', error);
       res.status(500).json({ error: 'Ошибка при загрузке файла' });
@@ -796,7 +795,7 @@ app.get('/api/messages/conversations', authenticate, async (req, res) => {
       JOIN users u ON (c.user1_id = ? AND c.user2_id = u.id) OR (c.user2_id = ? AND c.user1_id = u.id)
       WHERE c.user1_id = ? OR c.user2_id = ?
       ORDER BY c.updated_at DESC
-    `, [userId, userId, userId, userId, userId]);
+    `, [userId, userId, userId, userId]);
     
     const result = conversations.map(conv => {
       return {
